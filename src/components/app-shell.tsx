@@ -14,6 +14,8 @@ const navItems = [
   { href: "/xhs-square", label: "提示词广场", icon: Sparkles },
 ];
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -42,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <div className="flex h-10 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-2 shadow-lg shadow-blue-500/10 ring-1 ring-blue-100 transition-shadow group-hover:shadow-blue-500/20 sm:w-36">
                 <img
-                  src="/wenxi-logo.png"
+                  src={`${basePath}/wenxi-logo.png`}
                   alt="文汐"
                   className="h-full w-full object-contain"
                 />
@@ -126,7 +128,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-blue-100">
                   <img
-                    src="/wenxi-logo.png"
+                    src={`${basePath}/wenxi-logo.png`}
                     alt="文汐"
                     className="h-full w-full object-contain"
                   />
