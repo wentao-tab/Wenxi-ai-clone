@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, ClipboardEvent, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen,
@@ -90,6 +90,30 @@ function getCategoryGradient(category: string) {
   return categoryMeta[category as PromptCategory]?.gradient || "from-violet-500 to-purple-500";
 }
 
+function splitCategoryInput(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[、,，/／\n]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function getStoredArray<T>(key: string): T[] {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    window.localStorage.removeItem(key);
+    return [];
+  }
+}
+
 function imageHeight(size: string) {
   const normalized = size.toLowerCase().replaceAll(" ", "");
   if (
@@ -108,34 +132,18 @@ function imageHeight(size: string) {
 export function XhsSquare() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [personalCards, setPersonalCards] = useState<PromptCard[]>([]);
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [personalCards, setPersonalCards] = useState<PromptCard[]>(() =>
+    getStoredArray<PromptCard>(STORAGE_KEY),
+  );
+  const [customCategories, setCustomCategories] = useState<string[]>(() =>
+    getStoredArray<string>(CUSTOM_CATEGORIES_KEY),
+  );
   const [showComposer, setShowComposer] = useState(false);
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PromptCard | null>(null);
   const [zoomed, setZoomed] = useState(false);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setPersonalCards(parsed);
-      } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-    const rawCategories = window.localStorage.getItem(CUSTOM_CATEGORIES_KEY);
-    if (rawCategories) {
-      try {
-        const parsedCategories = JSON.parse(rawCategories);
-        if (Array.isArray(parsedCategories)) setCustomCategories(parsedCategories);
-      } catch {
-        window.localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
-      }
-    }
-  }, []);
+  const [toastMessage, setToastMessage] = useState("");
 
   function persistPersonalCards(nextCards: PromptCard[]) {
     setPersonalCards(nextCards);
@@ -150,7 +158,7 @@ export function XhsSquare() {
   const filterOptions = useMemo(() => {
     const existingNames = new Set(filters.map((filter) => filter.name));
     const cardCategories = personalCards
-      .map((card) => getCategoryLabel(card.category))
+      .flatMap((card) => [getCategoryLabel(card.category), ...card.tags])
       .filter(Boolean);
     const dynamicFilters = Array.from(new Set([...customCategories, ...cardCategories]))
       .filter((name) => !existingNames.has(name))
@@ -166,7 +174,14 @@ export function XhsSquare() {
   const filteredCards = useMemo(() => {
     let cards = [...personalCards, ...promptCards];
     if (activeFilter !== "all") {
-      cards = cards.filter((card) => card.category === activeFilter);
+      cards = cards.filter((card) => {
+        const categoryLabel = getCategoryLabel(card.category);
+        return (
+          card.category === activeFilter ||
+          categoryLabel === activeFilter ||
+          card.tags.includes(activeFilter)
+        );
+      });
     }
     const keyword = search.trim().toLowerCase();
     if (!keyword) return cards;
@@ -206,13 +221,21 @@ export function XhsSquare() {
   }
 
   function publishPrompt(card: PromptCard) {
-    const categoryLabel = getCategoryLabel(card.category);
-    const builtInCategory = filters.some((filter) => filter.id === card.category);
-    if (!builtInCategory && !customCategories.includes(categoryLabel)) {
-      persistCustomCategories([...customCategories, categoryLabel]);
+    const builtInNames = new Set(filters.map((filter) => filter.name));
+    const nextCustomCategories = Array.from(
+      new Set([
+        ...customCategories,
+        getCategoryLabel(card.category),
+        ...card.tags.filter((tag) => !["本地图片", "外链图片"].includes(tag)),
+      ]),
+    ).filter((name) => name && !builtInNames.has(name));
+    if (nextCustomCategories.length !== customCategories.length) {
+      persistCustomCategories(nextCustomCategories);
     }
     persistPersonalCards([card, ...personalCards]);
     setShowComposer(false);
+    setToastMessage("你又维护了一件自己的宝藏啦");
+    window.setTimeout(() => setToastMessage(""), 2600);
   }
 
   function deletePrompt(id: string) {
@@ -488,6 +511,17 @@ export function XhsSquare() {
           onPublish={publishPrompt}
         />
       )}
+      {toastMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="fixed right-4 top-20 z-[60] inline-flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-xl shadow-slate-900/10"
+          role="status"
+        >
+          <Sparkles className="h-4 w-4 text-emerald-500" />
+          {toastMessage}
+        </motion.div>
+      )}
     </main>
   );
 }
@@ -656,22 +690,24 @@ function PromptComposer({
   const [imageName, setImageName] = useState("");
 
   const canPublish = prompt.trim().length > 0 && (imageUrl.trim().length > 0 || imageName);
-  const matchedExistingCategory = categories.find(
-    (item) => item.name.toLowerCase() === customCategory.trim().toLowerCase(),
-  );
-  const selectedCategory = customCategory.trim()
-    ? matchedExistingCategory?.id || customCategory.trim()
+  const customCategoryNames = splitCategoryInput(customCategory);
+  const selectedCategory = customCategoryNames[0]
+    ? categories.find(
+        (item) => item.name.toLowerCase() === customCategoryNames[0].toLowerCase(),
+      )?.id || customCategoryNames[0]
     : category;
   const selectedCategoryLabel = getCategoryLabel(selectedCategory);
+  const selectedCategoryTags = customCategoryNames.length
+    ? customCategoryNames.map((name) => getCategoryLabel(name))
+    : [selectedCategoryLabel];
 
-  function buildCard(): PromptCard {
-    const now = new Date().toISOString();
+  function buildCard(id: string, now: string): PromptCard {
     const finalTags = Array.from(
-      new Set([selectedCategoryLabel, imageName ? "本地图片" : "外链图片"]),
+      new Set([...selectedCategoryTags, imageName ? "本地图片" : "外链图片"]),
     ).slice(0, 8);
 
     return {
-      id: `manual-${Date.now()}`,
+      id,
       title: title.trim() || prompt.trim().slice(0, 36),
       prompt: prompt.trim(),
       category: selectedCategory,
@@ -716,10 +752,15 @@ function PromptComposer({
     }
   }
 
+  function handlePublish() {
+    const now = new Date().toISOString();
+    onPublish(buildCard(`manual-${now.replace(/\D/g, "")}`, now));
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[28px] bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/90 px-5 py-4 backdrop-blur sm:px-6">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+        <div className="shrink-0 border-b border-gray-100 bg-white/90 px-5 py-4 backdrop-blur sm:px-6">
           <div>
             <h2 className="text-lg font-bold text-slate-900">保存提示词案例</h2>
             <p className="mt-0.5 text-xs text-slate-500">
@@ -736,7 +777,7 @@ function PromptComposer({
           </button>
         </div>
 
-        <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid flex-1 gap-5 overflow-y-auto p-5 pb-6 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section className="space-y-4">
             <Field label="标题">
               <input
@@ -769,9 +810,12 @@ function PromptComposer({
                 <input
                   value={customCategory}
                   onChange={(event) => setCustomCategory(event.target.value)}
-                  placeholder="例如：海报 / 产品摄影 / 冷灰"
+                  placeholder="例如：海报、产品摄影、冷灰"
                   className="w-full rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-primary/30 focus:bg-white focus:ring-2 focus:ring-primary/20"
                 />
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  多个用顿号、逗号、斜杠或换行分隔；第一个会作为主分类，其余会作为标签和筛选项。
+                </p>
               </Field>
             </div>
 
@@ -797,7 +841,7 @@ function PromptComposer({
                   ))}
               </div>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                分类和标签已合并：选择一个已有项，或在上方输入新名称。发布后新名称会出现在筛选栏和下次保存弹窗中。
+                分类和标签已合并：可以选择一个已有项，也可以在上方新增一个或多个。发布后会出现在筛选栏和下次保存弹窗中。
               </p>
             </Field>
           </section>
@@ -852,7 +896,7 @@ function PromptComposer({
                   {title || "未命名提示词"}
                 </p>
                 <p className="inline-flex w-fit rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-600">
-                  #{selectedCategoryLabel || "未分类"}
+                  #{selectedCategoryTags.slice(0, 3).join(" #") || "未分类"}
                 </p>
                 <p className="line-clamp-4 text-xs leading-5 text-slate-500">
                   {prompt || "提示词内容会展示在这里"}
@@ -860,16 +904,18 @@ function PromptComposer({
               </div>
             </div>
 
-            <button
-              type="button"
-              disabled={!canPublish}
-              onClick={() => onPublish(buildCard())}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              <Save className="h-4 w-4" />
-              发布到提示词广场
-            </button>
           </aside>
+        </div>
+        <div className="shrink-0 border-t border-gray-100 bg-white/95 px-5 py-3 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:px-6">
+          <button
+            type="button"
+            disabled={!canPublish}
+            onClick={handlePublish}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 lg:ml-auto lg:flex lg:max-w-[360px]"
+          >
+            <Save className="h-4 w-4" />
+            发布到提示词广场
+          </button>
         </div>
       </div>
     </div>
@@ -878,10 +924,10 @@ function PromptComposer({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
+    <div className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-800">{label}</span>
       {children}
-    </label>
+    </div>
   );
 }
 

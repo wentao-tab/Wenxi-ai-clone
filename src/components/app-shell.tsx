@@ -8,7 +8,7 @@ import {
   Menu,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const navItems = [
   { href: "/xhs-square", label: "提示词广场", icon: Sparkles },
@@ -18,11 +18,9 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    setSidebarOpen(window.innerWidth >= 768);
-  }, []);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    return typeof window !== "undefined" ? window.innerWidth >= 768 : false;
+  });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
