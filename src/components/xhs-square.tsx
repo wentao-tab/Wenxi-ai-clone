@@ -148,13 +148,15 @@ export function XhsSquare() {
   const [toastMessage, setToastMessage] = useState("");
 
   function persistPersonalCards(nextCards: PromptCard[]) {
+    const serialized = JSON.stringify(nextCards);
+    window.localStorage.setItem(STORAGE_KEY, serialized);
     setPersonalCards(nextCards);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCards));
   }
 
   function persistCustomCategories(nextCategories: string[]) {
+    const serialized = JSON.stringify(nextCategories);
+    window.localStorage.setItem(CUSTOM_CATEGORIES_KEY, serialized);
     setCustomCategories(nextCategories);
-    window.localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(nextCategories));
   }
 
   const filterOptions = useMemo(() => {
@@ -237,20 +239,24 @@ export function XhsSquare() {
   }
 
   function publishPrompt(card: PromptCard) {
-    const builtInNames = new Set(filters.map((filter) => filter.name));
-    const nextCustomCategories = Array.from(
-      new Set([
-        ...customCategories,
-        getCategoryLabel(card.category),
-        ...card.tags.filter((tag) => !["本地图片", "外链图片"].includes(tag)),
-      ]),
-    ).filter((name) => name && !builtInNames.has(name));
-    if (nextCustomCategories.length !== customCategories.length) {
-      persistCustomCategories(nextCustomCategories);
+    try {
+      const builtInNames = new Set(filters.map((filter) => filter.name));
+      const nextCustomCategories = Array.from(
+        new Set([
+          ...customCategories,
+          getCategoryLabel(card.category),
+          ...card.tags.filter((tag) => !["本地图片", "外链图片"].includes(tag)),
+        ]),
+      ).filter((name) => name && !builtInNames.has(name));
+      if (nextCustomCategories.length !== customCategories.length) {
+        persistCustomCategories(nextCustomCategories);
+      }
+      persistPersonalCards([card, ...personalCards]);
+      setShowComposer(false);
+      setToastMessage("你又维护了一件自己的宝藏啦");
+    } catch {
+      setToastMessage("图片太大没保存成功，我已保留弹窗内容，请换小图或粘贴图片链接");
     }
-    persistPersonalCards([card, ...personalCards]);
-    setShowComposer(false);
-    setToastMessage("你又维护了一件自己的宝藏啦");
     window.setTimeout(() => setToastMessage(""), 2600);
   }
 
@@ -734,8 +740,11 @@ function PromptComposer({
   const [sourceUrl, setSourceUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [imageName, setImageName] = useState("");
+  const [isHandlingImage, setIsHandlingImage] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
-  const canPublish = prompt.trim().length > 0 && (imageUrl.trim().length > 0 || imageName);
+  const canPublish =
+    prompt.trim().length > 0 && (imageUrl.trim().length > 0 || imageName) && !isHandlingImage;
   const customCategoryNames = splitCategoryInput(customCategory);
   const selectedCategory = customCategoryNames[0]
     ? categories.find(
@@ -778,9 +787,14 @@ function PromptComposer({
 
   async function readImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
-    const dataUrl = await fileToDataUrl(file);
-    setImageUrl(dataUrl);
-    setImageName(file.name);
+    setIsHandlingImage(true);
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      setImageUrl(dataUrl);
+      setImageName(file.name);
+    } finally {
+      setIsHandlingImage(false);
+    }
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -799,8 +813,11 @@ function PromptComposer({
   }
 
   function handlePublish() {
+    if (!canPublish || isPublishing) return;
+    setIsPublishing(true);
     const now = new Date().toISOString();
     onPublish(buildCard(`manual-${now.replace(/\D/g, "")}`, now));
+    setIsPublishing(false);
   }
 
   return (
@@ -920,8 +937,13 @@ function PromptComposer({
                   className="mb-3 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-primary/30 focus:ring-2 focus:ring-primary/20"
                 />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  桌面端可直接在这里粘贴剪贴板图片；手机端建议先保存图片再上传。
+                  桌面端可直接粘贴剪贴板图片；本地图片会先压缩再保存，手机端也可上传小图。
                 </p>
+                {isHandlingImage && (
+                  <p className="mt-2 text-xs font-medium text-violet-600">
+                    正在处理图片...
+                  </p>
+                )}
               </div>
             </Field>
 
@@ -955,12 +977,12 @@ function PromptComposer({
         <div className="shrink-0 border-t border-gray-100 bg-white/95 px-5 py-3 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:px-6">
           <button
             type="button"
-            disabled={!canPublish}
+            disabled={!canPublish || isPublishing}
             onClick={handlePublish}
             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 lg:ml-auto lg:flex lg:max-w-[360px]"
           >
             <Save className="h-4 w-4" />
-            发布到提示词广场
+            {isPublishing ? "正在发布..." : "发布到提示词广场"}
           </button>
         </div>
       </div>
@@ -977,10 +999,32 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function fileToDataUrl(file: File) {
+function fileToCompressedDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
+    reader.onload = () => {
+      const rawDataUrl = String(reader.result);
+      const image = new Image();
+      image.onload = () => {
+        const maxSide = 1400;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          resolve(rawDataUrl);
+          return;
+        }
+        context.drawImage(image, 0, 0, width, height);
+        const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+        resolve(canvas.toDataURL(outputType, 0.82));
+      };
+      image.onerror = () => resolve(rawDataUrl);
+      image.src = rawDataUrl;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
