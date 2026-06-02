@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Travel-AI | 智能旅行助手",
-  description: "AI 旅行助手与小红书提示词广场复刻原型",
+  title: "文汐",
+  description: "文汐提示词广场",
 };
 
 export default function RootLayout({

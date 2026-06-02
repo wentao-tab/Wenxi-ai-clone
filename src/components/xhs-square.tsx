@@ -132,6 +132,8 @@ function imageHeight(size: string) {
 export function XhsSquare() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
+  const [showAllFilters, setShowAllFilters] = useState(false);
   const [personalCards, setPersonalCards] = useState<PromptCard[]>(() =>
     getStoredArray<PromptCard>(STORAGE_KEY),
   );
@@ -170,6 +172,20 @@ export function XhsSquare() {
       }));
     return [...filters, ...dynamicFilters];
   }, [customCategories, personalCards]);
+
+  const visibleFilterOptions = useMemo(() => {
+    const keyword = filterSearch.trim().toLowerCase();
+    const matchedFilters = keyword
+      ? filterOptions.filter((filter) => filter.name.toLowerCase().includes(keyword))
+      : filterOptions;
+    if (keyword || showAllFilters || filterOptions.length <= 12) return matchedFilters;
+    const compactFilters = matchedFilters.slice(0, 12);
+    const activeOption = filterOptions.find((filter) => filter.id === activeFilter);
+    if (activeOption && !compactFilters.some((filter) => filter.id === activeFilter)) {
+      return [...compactFilters.slice(0, 11), activeOption];
+    }
+    return compactFilters;
+  }, [activeFilter, filterOptions, filterSearch, showAllFilters]);
 
   const filteredCards = useMemo(() => {
     let cards = [...personalCards, ...promptCards];
@@ -313,26 +329,56 @@ export function XhsSquare() {
           </div>
         </div>
 
-        <div className="mb-6 flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-          {filterOptions.map((filter) => {
-            const Icon = filter.icon;
-            const active = activeFilter === filter.id;
-            return (
-              <button
-                key={filter.id}
-                onClick={() => setActiveFilter(filter.id)}
-                className={[
-                  "flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-medium transition-all",
-                  active
-                    ? `${filter.activeClass} shadow-sm`
-                    : "border-gray-200 bg-white text-muted-foreground hover:bg-gray-50",
-                ].join(" ")}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {filter.name}
-              </button>
-            );
-          })}
+        <div className="mb-6 rounded-2xl border border-gray-100 bg-white/70 p-2 shadow-sm shadow-slate-900/[0.03]">
+          {filterOptions.length > 12 && (
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative sm:w-64">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="搜索分类标签..."
+                  value={filterSearch}
+                  onChange={(event) => setFilterSearch(event.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-xs text-foreground outline-none transition-all focus:border-primary/30 focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              {!filterSearch.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllFilters((value) => !value)}
+                  className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:bg-gray-50"
+                >
+                  {showAllFilters ? "收起标签" : `展开全部 ${filterOptions.length} 个`}
+                </button>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {visibleFilterOptions.map((filter) => {
+              const Icon = filter.icon;
+              const active = activeFilter === filter.id;
+              return (
+                <button
+                  key={filter.id}
+                  onClick={() => setActiveFilter(filter.id)}
+                  className={[
+                    "flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                    active
+                      ? `${filter.activeClass} shadow-sm`
+                      : "border-gray-200 bg-white text-muted-foreground hover:bg-gray-50",
+                  ].join(" ")}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {filter.name}
+                </button>
+              );
+            })}
+            {filterSearch.trim() && visibleFilterOptions.length === 0 && (
+              <span className="px-2 py-2 text-xs text-muted-foreground">
+                没找到这个标签
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="mb-4 flex items-center justify-between">
