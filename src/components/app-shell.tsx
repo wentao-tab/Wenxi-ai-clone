@@ -42,12 +42,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/xhs-square"
               className="group flex min-w-0 items-center gap-2 rounded-2xl px-2 py-1 transition-colors hover:bg-secondary/70"
             >
-              <div className="flex h-10 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-2 shadow-lg shadow-blue-500/10 ring-1 ring-blue-100 transition-shadow group-hover:shadow-blue-500/20 sm:w-36">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-lg shadow-blue-500/10 ring-1 ring-blue-100 transition-shadow group-hover:shadow-blue-500/20">
                 <img
-                  src={`${basePath}/wenxi-logo.png`}
+                  src={`${basePath}/wenxi-mark.png`}
                   alt="文汐"
                   className="h-full w-full object-contain"
                 />
+              </div>
+              <div className="hidden min-w-0 flex-col leading-none sm:flex">
+                <span className="text-base font-extrabold tracking-wide text-slate-900">
+                  文汐
+                </span>
+                <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.2em] text-blue-400">
+                  WENXI
+                </span>
               </div>
             </Link>
           </div>
@@ -128,7 +136,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-blue-100">
                   <img
-                    src={`${basePath}/wenxi-logo.png`}
+                    src={`${basePath}/wenxi-mark.png`}
                     alt="文汐"
                     className="h-full w-full object-contain"
                   />

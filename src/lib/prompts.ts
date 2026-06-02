@@ -13,7 +13,7 @@ export type PromptCard = {
   id: string;
   title: string;
   prompt: string;
-  category: PromptCategory;
+  category: string;
   tags: string[];
   imageUrl: string;
   imagePath: string;
