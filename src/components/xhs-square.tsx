@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, ClipboardEvent, useMemo, useState } from "react";
+import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen,
@@ -34,6 +34,20 @@ import { categoryMeta, PromptCard, PromptCategory, promptCards } from "@/lib/pro
 
 const STORAGE_KEY = "travel-ai.personal-prompts.v1";
 const CUSTOM_CATEGORIES_KEY = "travel-ai.custom-categories.v1";
+const DRAFT_KEY = "travel-ai.prompt-draft.v1";
+const DB_NAME = "wenxi-prompt-square";
+const DB_STORE = "kv";
+
+type ComposerDraft = {
+  title: string;
+  prompt: string;
+  category: string;
+  customCategory: string;
+  sourceUrl: string;
+  imageUrl: string;
+  imageName: string;
+  updatedAt: string;
+};
 
 const filters: Array<{
   id: string;
@@ -114,6 +128,100 @@ function getStoredArray<T>(key: string): T[] {
   }
 }
 
+function getStoredObject<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function openPromptDb() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    if (typeof window === "undefined" || !window.indexedDB) {
+      reject(new Error("IndexedDB is unavailable"));
+      return;
+    }
+    const request = window.indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(DB_STORE)) {
+        database.createObjectStore(DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+  });
+}
+
+async function getDbValue<T>(key: string): Promise<T | null> {
+  const database = await openPromptDb();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(DB_STORE, "readonly");
+    const store = transaction.objectStore(DB_STORE);
+    const request = store.get(key);
+    request.onsuccess = () => resolve((request.result as T | undefined) ?? null);
+    request.onerror = () => reject(request.error || new Error("IndexedDB read failed"));
+    transaction.oncomplete = () => database.close();
+  });
+}
+
+async function setDbValue<T>(key: string, value: T) {
+  const database = await openPromptDb();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(DB_STORE, "readwrite");
+    const store = transaction.objectStore(DB_STORE);
+    const request = store.put(value, key);
+    request.onerror = () => reject(request.error || new Error("IndexedDB write failed"));
+    transaction.oncomplete = () => {
+      database.close();
+      resolve();
+    };
+    transaction.onerror = () => reject(transaction.error || new Error("IndexedDB failed"));
+  });
+}
+
+async function deleteDbValue(key: string) {
+  const database = await openPromptDb();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(DB_STORE, "readwrite");
+    const store = transaction.objectStore(DB_STORE);
+    store.delete(key);
+    transaction.oncomplete = () => {
+      database.close();
+      resolve();
+    };
+    transaction.onerror = () => reject(transaction.error || new Error("IndexedDB delete failed"));
+  });
+}
+
+async function persistValue<T>(key: string, value: T) {
+  try {
+    await setDbValue(key, value);
+  } catch {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // IndexedDB is the durable store; localStorage is only a lightweight fallback.
+  }
+}
+
+async function removePersistedValue(key: string) {
+  try {
+    await deleteDbValue(key);
+  } catch {}
+  try {
+    window.localStorage.removeItem(key);
+  } catch {}
+}
+
 function imageHeight(size: string) {
   const normalized = size.toLowerCase().replaceAll(" ", "");
   if (
@@ -147,15 +255,31 @@ export function XhsSquare() {
   const [zoomed, setZoomed] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  function persistPersonalCards(nextCards: PromptCard[]) {
-    const serialized = JSON.stringify(nextCards);
-    window.localStorage.setItem(STORAGE_KEY, serialized);
+  useEffect(() => {
+    let mounted = true;
+    async function hydrateStoredData() {
+      try {
+        const cards = await getDbValue<PromptCard[]>(STORAGE_KEY);
+        if (mounted && Array.isArray(cards)) setPersonalCards(cards);
+      } catch {}
+      try {
+        const categories = await getDbValue<string[]>(CUSTOM_CATEGORIES_KEY);
+        if (mounted && Array.isArray(categories)) setCustomCategories(categories);
+      } catch {}
+    }
+    hydrateStoredData();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function persistPersonalCards(nextCards: PromptCard[]) {
+    await persistValue(STORAGE_KEY, nextCards);
     setPersonalCards(nextCards);
   }
 
-  function persistCustomCategories(nextCategories: string[]) {
-    const serialized = JSON.stringify(nextCategories);
-    window.localStorage.setItem(CUSTOM_CATEGORIES_KEY, serialized);
+  async function persistCustomCategories(nextCategories: string[]) {
+    await persistValue(CUSTOM_CATEGORIES_KEY, nextCategories);
     setCustomCategories(nextCategories);
   }
 
@@ -238,7 +362,7 @@ export function XhsSquare() {
     });
   }
 
-  function publishPrompt(card: PromptCard) {
+  async function publishPrompt(card: PromptCard) {
     try {
       const builtInNames = new Set(filters.map((filter) => filter.name));
       const nextCustomCategories = Array.from(
@@ -249,19 +373,20 @@ export function XhsSquare() {
         ]),
       ).filter((name) => name && !builtInNames.has(name));
       if (nextCustomCategories.length !== customCategories.length) {
-        persistCustomCategories(nextCustomCategories);
+        await persistCustomCategories(nextCustomCategories);
       }
-      persistPersonalCards([card, ...personalCards]);
+      await persistPersonalCards([card, ...personalCards]);
+      await removePersistedValue(DRAFT_KEY);
       setShowComposer(false);
       setToastMessage("你又维护了一件自己的宝藏啦");
     } catch {
-      setToastMessage("图片太大没保存成功，我已保留弹窗内容，请换小图或粘贴图片链接");
+      setToastMessage("保存失败，但草稿已保留。请稍后重试，或换小图/图片链接");
     }
     window.setTimeout(() => setToastMessage(""), 2600);
   }
 
-  function deletePrompt(id: string) {
-    persistPersonalCards(personalCards.filter((card) => card.id !== id));
+  async function deletePrompt(id: string) {
+    await persistPersonalCards(personalCards.filter((card) => card.id !== id));
     setPreview(null);
   }
 
@@ -731,7 +856,7 @@ function PromptComposer({
     activeClass: string;
   }>;
   onClose: () => void;
-  onPublish: (card: PromptCard) => void;
+  onPublish: (card: PromptCard) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -742,6 +867,7 @@ function PromptComposer({
   const [imageName, setImageName] = useState("");
   const [isHandlingImage, setIsHandlingImage] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const canPublish =
     prompt.trim().length > 0 && (imageUrl.trim().length > 0 || imageName) && !isHandlingImage;
@@ -755,6 +881,69 @@ function PromptComposer({
   const selectedCategoryTags = customCategoryNames.length
     ? customCategoryNames.map((name) => getCategoryLabel(name))
     : [selectedCategoryLabel];
+
+  useEffect(() => {
+    let mounted = true;
+    async function restoreDraft() {
+      const localDraft = getStoredObject<ComposerDraft>(DRAFT_KEY);
+      try {
+        const dbDraft = await getDbValue<ComposerDraft>(DRAFT_KEY);
+        const draft = dbDraft || localDraft;
+        if (!mounted || !draft) return;
+        setTitle(draft.title || "");
+        setPrompt(draft.prompt || "");
+        setCategory(draft.category || "photography");
+        setCustomCategory(draft.customCategory || "");
+        setSourceUrl(draft.sourceUrl || "");
+        setImageUrl(draft.imageUrl || "");
+        setImageName(draft.imageName || "");
+        setDraftRestored(true);
+      } catch {
+        if (!mounted || !localDraft) return;
+        setTitle(localDraft.title || "");
+        setPrompt(localDraft.prompt || "");
+        setCategory(localDraft.category || "photography");
+        setCustomCategory(localDraft.customCategory || "");
+        setSourceUrl(localDraft.sourceUrl || "");
+        setImageUrl(localDraft.imageUrl || "");
+        setImageName(localDraft.imageName || "");
+        setDraftRestored(true);
+      }
+    }
+    restoreDraft();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const hasDraft =
+      title.trim() ||
+      prompt.trim() ||
+      customCategory.trim() ||
+      sourceUrl.trim() ||
+      imageUrl.trim() ||
+      imageName;
+    if (!hasDraft || isPublishing) return;
+    const draft: ComposerDraft = {
+      title,
+      prompt,
+      category,
+      customCategory,
+      sourceUrl,
+      imageUrl,
+      imageName,
+      updatedAt: new Date().toISOString(),
+    };
+    const timeout = window.setTimeout(() => {
+      persistValue(DRAFT_KEY, draft).catch(() => {
+        try {
+          window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        } catch {}
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [category, customCategory, imageName, imageUrl, isPublishing, prompt, sourceUrl, title]);
 
   function buildCard(id: string, now: string): PromptCard {
     const finalTags = Array.from(
@@ -812,12 +1001,15 @@ function PromptComposer({
     }
   }
 
-  function handlePublish() {
+  async function handlePublish() {
     if (!canPublish || isPublishing) return;
     setIsPublishing(true);
-    const now = new Date().toISOString();
-    onPublish(buildCard(`manual-${now.replace(/\D/g, "")}`, now));
-    setIsPublishing(false);
+    try {
+      const now = new Date().toISOString();
+      await onPublish(buildCard(`manual-${now.replace(/\D/g, "")}`, now));
+    } finally {
+      setIsPublishing(false);
+    }
   }
 
   return (
@@ -842,6 +1034,11 @@ function PromptComposer({
 
         <div className="grid flex-1 gap-5 overflow-y-auto p-5 pb-6 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section className="space-y-4">
+            {draftRestored && (
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs font-medium leading-5 text-amber-700">
+                已恢复上次未发布草稿，确认无误后可以继续发布。
+              </div>
+            )}
             <Field label="标题">
               <input
                 value={title}
