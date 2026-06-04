@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import NextImage from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Bell,
@@ -41,10 +42,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="group flex min-w-0 items-center gap-2 rounded-2xl px-2 py-1 transition-colors hover:bg-secondary/70"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-lg shadow-blue-500/10 ring-1 ring-blue-100 transition-shadow group-hover:shadow-blue-500/20">
-                <img
+                <NextImage
                   src={`${basePath}/wenxi-mark.png`}
                   alt="文汐"
+                  width={40}
+                  height={40}
                   className="h-full w-full object-contain"
+                  priority
                 />
               </div>
               <div className="hidden min-w-0 flex-col leading-none sm:flex">
@@ -133,9 +137,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="card-glass rounded-xl p-3">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-blue-100">
-                  <img
+                  <NextImage
                     src={`${basePath}/wenxi-mark.png`}
                     alt="文汐"
+                    width={32}
+                    height={32}
                     className="h-full w-full object-contain"
                   />
                 </div>

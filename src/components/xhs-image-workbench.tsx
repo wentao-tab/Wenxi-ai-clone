@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Camera,
-  Image,
+  Image as ImageIcon,
   ImagePlus,
   Layers,
   Palette,
@@ -39,7 +39,7 @@ export function XhsImageWorkbench() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-8 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 shadow-lg shadow-violet-500/20">
-            <Image className="h-5 w-5 text-white" />
+            <ImageIcon className="h-5 w-5 text-white" />
           </div>
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
@@ -177,7 +177,7 @@ export function XhsImageWorkbench() {
                 </div>
                 <div className="flex flex-col items-center px-8 text-center">
                   <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-lg shadow-violet-500/10">
-                    <Image className="h-6 w-6 text-violet-500" />
+                    <ImageIcon className="h-6 w-6 text-violet-500" />
                   </div>
                   <p className="line-clamp-4 text-sm leading-6 text-slate-500">
                     {prompt || "输入提示词后显示预览摘要"}

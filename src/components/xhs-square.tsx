@@ -751,6 +751,8 @@ export function XhsSquare() {
                     zoomed ? "max-w-none" : "max-w-[760px]"
                   }`}
                 >
+                  {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={preview.imageUrl}
                     alt={preview.title}
@@ -893,6 +895,8 @@ function PromptTile({
             card.size,
           )} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white`}
         >
+          {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={card.imageUrl}
             alt={card.title}
@@ -1301,11 +1305,15 @@ function PromptComposer({
 
             <div className="overflow-hidden rounded-2xl border border-gray-100 bg-slate-50">
               {imageUrl ? (
+                <>
+                {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={imageUrl}
                   alt="案例预览"
                   className="max-h-[360px] w-full object-cover"
                 />
+                </>
               ) : (
                 <div className="flex aspect-square items-center justify-center p-8 text-center text-sm text-slate-400">
                   案例图预览
