@@ -37,6 +37,7 @@ import { categoryMeta, PromptCard, PromptCategory, promptCards } from "@/lib/pro
 const STORAGE_KEY = "travel-ai.personal-prompts.v1";
 const CUSTOM_CATEGORIES_KEY = "travel-ai.custom-categories.v1";
 const DRAFT_KEY = "travel-ai.prompt-draft.v1";
+const LAST_BACKUP_KEY = "travel-ai.last-backup-at.v1";
 const DB_NAME = "wenxi-prompt-square";
 const DB_STORE = "kv";
 type SortOrder = "newest" | "oldest";
@@ -141,6 +142,11 @@ function getStoredObject<T>(key: string): T | null {
     window.localStorage.removeItem(key);
     return null;
   }
+}
+
+function getStoredString(key: string) {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(key) || "";
 }
 
 function openPromptDb() {
@@ -254,6 +260,18 @@ function getCardTimestamp(card: PromptCard) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function formatBackupTime(value: string) {
+  if (!value) return "未备份";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未备份";
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function isPromptCard(value: unknown): value is PromptCard {
   if (!value || typeof value !== "object") return false;
   const card = value as Partial<PromptCard>;
@@ -307,6 +325,7 @@ export function XhsSquare() {
   const [preview, setPreview] = useState<PromptCard | null>(null);
   const [zoomed, setZoomed] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [lastBackupAt, setLastBackupAt] = useState(() => getStoredString(LAST_BACKUP_KEY));
 
   useEffect(() => {
     let mounted = true;
@@ -460,6 +479,11 @@ export function XhsSquare() {
     anchor.download = `wenxi-prompts-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+    const now = new Date().toISOString();
+    window.localStorage.setItem(LAST_BACKUP_KEY, now);
+    setLastBackupAt(now);
+    setToastMessage("已导出备份，自己的宝藏更稳了");
+    window.setTimeout(() => setToastMessage(""), 2600);
   }
 
   async function importJson(event: ChangeEvent<HTMLInputElement>) {
@@ -561,6 +585,19 @@ export function XhsSquare() {
               className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm text-foreground transition-all focus:border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
+        </div>
+
+        <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-100 bg-white/75 px-4 py-3 text-xs text-muted-foreground shadow-sm shadow-slate-900/[0.03] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-semibold text-slate-700">本地数据</span>
+            <span>已保存 {personalCards.length} 条</span>
+            <span>最近备份：{formatBackupTime(lastBackupAt)}</span>
+          </div>
+          {personalCards.length > 0 && !lastBackupAt && (
+            <span className="font-medium text-amber-600">
+              建议导出 JSON，换手机或清缓存前可恢复
+            </span>
+          )}
         </div>
 
         <div className="mb-6 rounded-2xl border border-gray-100 bg-white/70 p-2 shadow-sm shadow-slate-900/[0.03]">
