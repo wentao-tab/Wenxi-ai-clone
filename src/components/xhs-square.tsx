@@ -12,6 +12,7 @@ import {
   Dumbbell,
   Eye,
   FileDown,
+  FileUp,
   Globe,
   Heart,
   Home,
@@ -253,6 +254,26 @@ function getCardTimestamp(card: PromptCard) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function isPromptCard(value: unknown): value is PromptCard {
+  if (!value || typeof value !== "object") return false;
+  const card = value as Partial<PromptCard>;
+  return (
+    typeof card.id === "string" &&
+    typeof card.title === "string" &&
+    typeof card.prompt === "string" &&
+    typeof card.imageUrl === "string" &&
+    Array.isArray(card.tags)
+  );
+}
+
+function extractPromptCards(value: unknown) {
+  if (Array.isArray(value)) return value.filter(isPromptCard);
+  if (value && typeof value === "object" && Array.isArray((value as { prompts?: unknown }).prompts)) {
+    return (value as { prompts: unknown[] }).prompts.filter(isPromptCard);
+  }
+  return [];
+}
+
 function imageHeight(size: string) {
   const normalized = size.toLowerCase().replaceAll(" ", "");
   if (
@@ -436,9 +457,42 @@ export function XhsSquare() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "my-prompt-square.json";
+    anchor.download = `wenxi-prompts-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function importJson(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const importedCards = extractPromptCards(JSON.parse(await file.text()));
+      if (!importedCards.length) {
+        setToastMessage("没有识别到可导入的提示词备份");
+        window.setTimeout(() => setToastMessage(""), 2600);
+        return;
+      }
+
+      const storedCards = await readPersistedArray<PromptCard>(STORAGE_KEY);
+      const mergedCards = uniqueById([...importedCards, ...personalCards, ...storedCards]);
+      const builtInNames = new Set(filters.map((filter) => filter.name));
+      const importedCategories = mergedCards.flatMap((card) => [
+        getCategoryLabel(card.category),
+        ...card.tags.filter((tag) => !["本地图片", "外链图片"].includes(tag)),
+      ]);
+      const nextCategories = uniqueStrings([...customCategories, ...importedCategories]).filter(
+        (name) => name && !builtInNames.has(name),
+      );
+
+      await persistPersonalCards(mergedCards);
+      await persistCustomCategories(nextCategories);
+      setToastMessage(`已恢复 ${importedCards.length} 条提示词备份`);
+    } catch {
+      setToastMessage("导入失败，请确认文件是文汐导出的 JSON");
+    }
+    window.setTimeout(() => setToastMessage(""), 2600);
   }
 
   return (
@@ -465,6 +519,16 @@ export function XhsSquare() {
             </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:bg-gray-50">
+                <FileUp className="h-3.5 w-3.5" />
+                导入 JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={importJson}
+                />
+              </label>
               <button
                 type="button"
                 onClick={exportJson}
