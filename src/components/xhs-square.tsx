@@ -1015,8 +1015,8 @@ function PromptComposer({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
-        <div className="shrink-0 border-b border-gray-100 bg-white/90 px-5 py-4 backdrop-blur sm:px-6">
-          <div>
+        <div className="relative shrink-0 border-b border-gray-100 bg-white/90 px-5 py-4 pr-16 backdrop-blur sm:px-6 sm:pr-20">
+          <div className="min-w-0">
             <h2 className="text-lg font-bold text-slate-900">保存提示词案例</h2>
             <p className="mt-0.5 text-xs text-slate-500">
               从 Twitter 等来源复制提示词和案例图，发布后展示到广场
@@ -1025,7 +1025,7 @@ function PromptComposer({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200"
+            className="absolute right-5 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 sm:right-6"
             aria-label="关闭"
           >
             <X className="h-4 w-4" />
