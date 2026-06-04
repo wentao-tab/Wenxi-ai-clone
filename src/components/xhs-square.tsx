@@ -6,6 +6,7 @@ import {
   BookOpen,
   Camera,
   Check,
+  Clock,
   Copy,
   Download,
   Dumbbell,
@@ -37,6 +38,7 @@ const CUSTOM_CATEGORIES_KEY = "travel-ai.custom-categories.v1";
 const DRAFT_KEY = "travel-ai.prompt-draft.v1";
 const DB_NAME = "wenxi-prompt-square";
 const DB_STORE = "kv";
+type SortOrder = "newest" | "oldest";
 
 type ComposerDraft = {
   title: string;
@@ -246,6 +248,11 @@ function uniqueStrings(items: string[]) {
   return Array.from(new Set(items.filter(Boolean)));
 }
 
+function getCardTimestamp(card: PromptCard) {
+  const timestamp = Date.parse(card.createdAt || card.updatedAt || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function imageHeight(size: string) {
   const normalized = size.toLowerCase().replaceAll(" ", "");
   if (
@@ -265,6 +272,7 @@ export function XhsSquare() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   const [showAllFilters, setShowAllFilters] = useState(false);
   const [personalCards, setPersonalCards] = useState<PromptCard[]>(() =>
     getStoredArray<PromptCard>(STORAGE_KEY),
@@ -347,17 +355,22 @@ export function XhsSquare() {
       });
     }
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return cards;
-    return cards.filter((card) => {
-      return (
-        card.title.toLowerCase().includes(keyword) ||
-        card.prompt.toLowerCase().includes(keyword) ||
-        card.author.toLowerCase().includes(keyword) ||
-        getCategoryLabel(card.category).toLowerCase().includes(keyword) ||
-        card.tags.some((tag) => tag.toLowerCase().includes(keyword))
-      );
+    if (keyword) {
+      cards = cards.filter((card) => {
+        return (
+          card.title.toLowerCase().includes(keyword) ||
+          card.prompt.toLowerCase().includes(keyword) ||
+          card.author.toLowerCase().includes(keyword) ||
+          getCategoryLabel(card.category).toLowerCase().includes(keyword) ||
+          card.tags.some((tag) => tag.toLowerCase().includes(keyword))
+        );
+      });
+    }
+    return cards.sort((a, b) => {
+      const diff = getCardTimestamp(b) - getCardTimestamp(a);
+      return sortOrder === "newest" ? diff : -diff;
     });
-  }, [activeFilter, personalCards, search]);
+  }, [activeFilter, personalCards, search, sortOrder]);
 
   async function copyPrompt(card: PromptCard) {
     try {
@@ -538,7 +551,7 @@ export function XhsSquare() {
           </div>
         </div>
 
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             共{" "}
             <span className="font-semibold text-foreground">
@@ -546,11 +559,26 @@ export function XhsSquare() {
             </span>{" "}
             个提示词
           </p>
-          {filteredCards.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              我的发布 {personalCards.length} 个
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-muted-foreground shadow-sm shadow-slate-900/[0.03]">
+              <Clock className="h-3.5 w-3.5" />
+              <span>添加时间</span>
+              <select
+                value={sortOrder}
+                onChange={(event) => setSortOrder(event.target.value as SortOrder)}
+                className="bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                aria-label="按添加时间排序"
+              >
+                <option value="newest">最新优先</option>
+                <option value="oldest">最早优先</option>
+              </select>
+            </label>
+            {filteredCards.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                我的发布 {personalCards.length} 个
+              </span>
+            )}
+          </div>
         </div>
 
         {filteredCards.length > 0 ? (
