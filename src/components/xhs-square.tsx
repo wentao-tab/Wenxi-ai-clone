@@ -222,6 +222,30 @@ async function removePersistedValue(key: string) {
   } catch {}
 }
 
+async function readPersistedArray<T>(key: string): Promise<T[]> {
+  const localItems = getStoredArray<T>(key);
+  try {
+    const dbItems = await getDbValue<T[]>(key);
+    if (Array.isArray(dbItems)) {
+      return [...dbItems, ...localItems];
+    }
+  } catch {}
+  return localItems;
+}
+
+function uniqueById<T extends { id: string }>(items: T[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function uniqueStrings(items: string[]) {
+  return Array.from(new Set(items.filter(Boolean)));
+}
+
 function imageHeight(size: string) {
   const normalized = size.toLowerCase().replaceAll(" ", "");
   if (
@@ -258,14 +282,11 @@ export function XhsSquare() {
   useEffect(() => {
     let mounted = true;
     async function hydrateStoredData() {
-      try {
-        const cards = await getDbValue<PromptCard[]>(STORAGE_KEY);
-        if (mounted && Array.isArray(cards)) setPersonalCards(cards);
-      } catch {}
-      try {
-        const categories = await getDbValue<string[]>(CUSTOM_CATEGORIES_KEY);
-        if (mounted && Array.isArray(categories)) setCustomCategories(categories);
-      } catch {}
+      const cards = await readPersistedArray<PromptCard>(STORAGE_KEY);
+      if (mounted && cards.length) setPersonalCards(uniqueById(cards));
+
+      const categories = await readPersistedArray<string>(CUSTOM_CATEGORIES_KEY);
+      if (mounted && categories.length) setCustomCategories(uniqueStrings(categories));
     }
     hydrateStoredData();
     return () => {
@@ -375,7 +396,9 @@ export function XhsSquare() {
       if (nextCustomCategories.length !== customCategories.length) {
         await persistCustomCategories(nextCustomCategories);
       }
-      await persistPersonalCards([card, ...personalCards]);
+      const storedCards = await readPersistedArray<PromptCard>(STORAGE_KEY);
+      const mergedCards = uniqueById([card, ...personalCards, ...storedCards]);
+      await persistPersonalCards(mergedCards);
       await removePersistedValue(DRAFT_KEY);
       setShowComposer(false);
       setToastMessage("你又维护了一件自己的宝藏啦");
@@ -386,7 +409,10 @@ export function XhsSquare() {
   }
 
   async function deletePrompt(id: string) {
-    await persistPersonalCards(personalCards.filter((card) => card.id !== id));
+    const storedCards = await readPersistedArray<PromptCard>(STORAGE_KEY);
+    await persistPersonalCards(
+      uniqueById([...personalCards, ...storedCards]).filter((card) => card.id !== id),
+    );
     setPreview(null);
   }
 
