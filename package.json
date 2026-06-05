@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:pages": "rm -rf out && NEXT_PUBLIC_BASE_PATH=/Wenxi-ai-clone next build",
+    "verify:pages": "node scripts/verify-pages-export.mjs /Wenxi-ai-clone",
     "start": "next start",
     "lint": "eslint"
   },
