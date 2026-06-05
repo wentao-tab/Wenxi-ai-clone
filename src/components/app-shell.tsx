@@ -49,6 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   height={40}
                   className="h-full w-full object-contain"
                   priority
+                  unoptimized
                 />
               </div>
               <div className="hidden min-w-0 flex-col leading-none sm:flex">
@@ -143,6 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     width={32}
                     height={32}
                     className="h-full w-full object-contain"
+                    unoptimized
                   />
                 </div>
                 <div>
