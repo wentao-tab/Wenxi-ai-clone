@@ -40,6 +40,7 @@ const DRAFT_KEY = "travel-ai.prompt-draft.v1";
 const LAST_BACKUP_KEY = "travel-ai.last-backup-at.v1";
 const DB_NAME = "wenxi-prompt-square";
 const DB_STORE = "kv";
+const MAX_PROMPT_IMAGES = 9;
 type SortOrder = "newest" | "oldest";
 
 type ComposerDraft = {
@@ -49,7 +50,9 @@ type ComposerDraft = {
   customCategory: string;
   sourceUrl: string;
   imageUrl: string;
+  imageUrls?: string[];
   imageName: string;
+  imageNames?: string[];
   updatedAt: string;
 };
 
@@ -272,6 +275,11 @@ function formatBackupTime(value: string) {
   });
 }
 
+function getCardImages(card: Pick<PromptCard, "imageUrl" | "imageUrls">) {
+  const images = Array.isArray(card.imageUrls) ? card.imageUrls.filter(Boolean) : [];
+  return images.length ? images : [card.imageUrl].filter(Boolean);
+}
+
 function isPromptCard(value: unknown): value is PromptCard {
   if (!value || typeof value !== "object") return false;
   const card = value as Partial<PromptCard>;
@@ -323,6 +331,7 @@ export function XhsSquare() {
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PromptCard | null>(null);
+  const [previewImageIndex, setPreviewImageIndex] = useState(0);
   const [zoomed, setZoomed] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [lastBackupAt, setLastBackupAt] = useState(() => getStoredString(LAST_BACKUP_KEY));
@@ -467,6 +476,7 @@ export function XhsSquare() {
       uniqueById([...personalCards, ...storedCards]).filter((card) => card.id !== id),
     );
     setPreview(null);
+    setPreviewImageIndex(0);
   }
 
   function exportJson() {
@@ -695,6 +705,7 @@ export function XhsSquare() {
                 onCopy={() => copyPrompt(card)}
                 onPreview={() => {
                   setPreview(card);
+                  setPreviewImageIndex(0);
                   setZoomed(false);
                 }}
               />
@@ -716,7 +727,10 @@ export function XhsSquare() {
       {preview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setPreview(null)}
+          onClick={() => {
+            setPreview(null);
+            setPreviewImageIndex(0);
+          }}
         >
           <motion.div
             initial={{ scale: 0.96, y: 16, opacity: 0 }}
@@ -727,12 +741,19 @@ export function XhsSquare() {
           >
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500" />
             <button
-              onClick={() => setPreview(null)}
+              onClick={() => {
+                setPreview(null);
+                setPreviewImageIndex(0);
+              }}
               aria-label="关闭预览"
               className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-md transition-all hover:bg-black/65 focus:outline-none focus:ring-2 focus:ring-white/70"
             >
               <X className="h-5 w-5" />
             </button>
+            {(() => {
+              const previewImages = getCardImages(preview);
+              const activeImage = previewImages[previewImageIndex] || previewImages[0] || preview.imageUrl;
+              return (
             <div className="grid max-h-[88vh] lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
               <div className="relative flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-4 sm:p-6">
                 <button
@@ -754,13 +775,35 @@ export function XhsSquare() {
                   {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={preview.imageUrl}
+                    src={activeImage}
                     alt={preview.title}
                     className={`w-full object-contain transition-transform duration-300 ${
                       zoomed ? "max-h-[72vh] scale-[1.02]" : "max-h-[64vh]"
                     }`}
                   />
                 </div>
+                {previewImages.length > 1 && (
+                  <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2 overflow-x-auto rounded-2xl bg-black/35 p-2 backdrop-blur-md">
+                    {previewImages.map((image, index) => (
+                      <button
+                        key={`${image}-${index}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPreviewImageIndex(index);
+                        }}
+                        className={`h-14 w-14 shrink-0 overflow-hidden rounded-xl ring-2 transition-all ${
+                          index === previewImageIndex ? "ring-white" : "ring-white/25 opacity-70"
+                        }`}
+                        aria-label={`查看第 ${index + 1} 张图片`}
+                      >
+                        {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={image} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex min-h-0 flex-col overflow-y-auto border-t border-gray-100 bg-white p-5 sm:p-6 lg:border-l lg:border-t-0">
                 <div className="mb-5 min-w-0">
@@ -809,7 +852,7 @@ export function XhsSquare() {
                   </button>
                   <div className="grid grid-cols-2 gap-3">
                     <a
-                      href={preview.imageUrl}
+                      href={activeImage}
                       download={`prompt-card-${preview.id}.png`}
                       className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
                     >
@@ -817,7 +860,10 @@ export function XhsSquare() {
                       下载图片
                     </a>
                     <button
-                      onClick={() => setPreview(null)}
+                      onClick={() => {
+                        setPreview(null);
+                        setPreviewImageIndex(0);
+                      }}
                       className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
                     >
                       关闭预览
@@ -835,6 +881,8 @@ export function XhsSquare() {
                 </div>
               </div>
             </div>
+              );
+            })()}
           </motion.div>
         </div>
       )}
@@ -879,6 +927,8 @@ function PromptTile({
 }) {
   const label = getCategoryLabel(card.category);
   const emoji = card.emoji || getCategoryEmoji(card.category);
+  const cardImages = getCardImages(card);
+  const coverImage = cardImages[0] || card.imageUrl;
   return (
     <motion.article
       initial={{ opacity: 0, y: 20 }}
@@ -898,12 +948,17 @@ function PromptTile({
           {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={card.imageUrl}
+            src={coverImage}
             alt={card.title}
             loading="lazy"
             decoding="async"
             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
+          {cardImages.length > 1 && (
+            <span className="absolute bottom-4 right-4 z-10 rounded-full bg-black/40 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+              共 {cardImages.length} 张
+            </span>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
           <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-2">
             <div className="flex flex-wrap gap-2">
@@ -1023,13 +1078,18 @@ function PromptComposer({
   const [customCategory, setCustomCategory] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [imageName, setImageName] = useState("");
+  const [imageNames, setImageNames] = useState<string[]>([]);
   const [isHandlingImage, setIsHandlingImage] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
 
-  const canPublish =
-    prompt.trim().length > 0 && (imageUrl.trim().length > 0 || imageName) && !isHandlingImage;
+  const galleryImages = useMemo(
+    () => (imageUrls.length ? imageUrls : [imageUrl].filter(Boolean)),
+    [imageUrl, imageUrls],
+  );
+  const canPublish = prompt.trim().length > 0 && galleryImages.length > 0 && !isHandlingImage;
   const customCategoryNames = splitCategoryInput(customCategory);
   const selectedCategory = customCategoryNames[0]
     ? categories.find(
@@ -1054,8 +1114,16 @@ function PromptComposer({
         setCategory(draft.category || "photography");
         setCustomCategory(draft.customCategory || "");
         setSourceUrl(draft.sourceUrl || "");
-        setImageUrl(draft.imageUrl || "");
-        setImageName(draft.imageName || "");
+        const restoredImages = draft.imageUrls?.length
+          ? draft.imageUrls.filter(Boolean)
+          : [draft.imageUrl].filter(Boolean);
+        const restoredNames = draft.imageNames?.length
+          ? draft.imageNames.filter(Boolean)
+          : [draft.imageName].filter(Boolean);
+        setImageUrls(restoredImages);
+        setImageUrl(restoredImages[0] || "");
+        setImageNames(restoredNames);
+        setImageName(restoredNames[0] || "");
         setDraftRestored(true);
       } catch {
         if (!mounted || !localDraft) return;
@@ -1064,8 +1132,16 @@ function PromptComposer({
         setCategory(localDraft.category || "photography");
         setCustomCategory(localDraft.customCategory || "");
         setSourceUrl(localDraft.sourceUrl || "");
-        setImageUrl(localDraft.imageUrl || "");
-        setImageName(localDraft.imageName || "");
+        const restoredImages = localDraft.imageUrls?.length
+          ? localDraft.imageUrls.filter(Boolean)
+          : [localDraft.imageUrl].filter(Boolean);
+        const restoredNames = localDraft.imageNames?.length
+          ? localDraft.imageNames.filter(Boolean)
+          : [localDraft.imageName].filter(Boolean);
+        setImageUrls(restoredImages);
+        setImageUrl(restoredImages[0] || "");
+        setImageNames(restoredNames);
+        setImageName(restoredNames[0] || "");
         setDraftRestored(true);
       }
     }
@@ -1081,7 +1157,7 @@ function PromptComposer({
       prompt.trim() ||
       customCategory.trim() ||
       sourceUrl.trim() ||
-      imageUrl.trim() ||
+      galleryImages.length ||
       imageName;
     if (!hasDraft || isPublishing) return;
     const draft: ComposerDraft = {
@@ -1091,7 +1167,9 @@ function PromptComposer({
       customCategory,
       sourceUrl,
       imageUrl,
+      imageUrls: galleryImages,
       imageName,
+      imageNames,
       updatedAt: new Date().toISOString(),
     };
     const timeout = window.setTimeout(() => {
@@ -1102,11 +1180,30 @@ function PromptComposer({
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [category, customCategory, imageName, imageUrl, isPublishing, prompt, sourceUrl, title]);
+  }, [
+    category,
+    customCategory,
+    galleryImages,
+    imageName,
+    imageNames,
+    imageUrl,
+    isPublishing,
+    prompt,
+    sourceUrl,
+    title,
+  ]);
 
   function buildCard(id: string, now: string): PromptCard {
+    const finalImageUrls = galleryImages.slice(0, MAX_PROMPT_IMAGES);
+    const hasLocalImages = finalImageUrls.some((url) => url.startsWith("data:"));
+    const hasExternalImages = finalImageUrls.some((url) => !url.startsWith("data:"));
     const finalTags = Array.from(
-      new Set([...selectedCategoryTags, imageName ? "本地图片" : "外链图片"]),
+      new Set([
+        ...selectedCategoryTags,
+        hasLocalImages ? "本地图片" : "",
+        hasExternalImages ? "外链图片" : "",
+        finalImageUrls.length > 1 ? "多图" : "",
+      ].filter(Boolean)),
     ).slice(0, 8);
 
     return {
@@ -1115,8 +1212,9 @@ function PromptComposer({
       prompt: prompt.trim(),
       category: selectedCategory,
       tags: finalTags,
-      imageUrl,
-      imagePath: imageName || imageUrl,
+      imageUrl: finalImageUrls[0],
+      imageUrls: finalImageUrls,
+      imagePath: imageNames.join("、") || finalImageUrls[0],
       size: "自定义",
       quality: "standard",
       model: "manual",
@@ -1133,31 +1231,64 @@ function PromptComposer({
     };
   }
 
-  async function readImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
+  async function readImageFiles(files: File[]) {
+    const imageFiles = files
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, Math.max(0, MAX_PROMPT_IMAGES - galleryImages.length));
+    if (!imageFiles.length) return;
     setIsHandlingImage(true);
     try {
-      const dataUrl = await fileToCompressedDataUrl(file);
-      setImageUrl(dataUrl);
-      setImageName(file.name);
+      const dataUrls = await Promise.all(imageFiles.map((file) => fileToCompressedDataUrl(file)));
+      setImageUrls([...galleryImages, ...dataUrls].slice(0, MAX_PROMPT_IMAGES));
+      setImageNames((current) => {
+        const next = [...current, ...imageFiles.map((file) => file.name)].slice(0, MAX_PROMPT_IMAGES);
+        setImageName(next[0] || "");
+        return next;
+      });
     } finally {
       setIsHandlingImage(false);
     }
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) await readImageFile(file);
+    const files = Array.from(event.target.files || []);
+    if (files.length) await readImageFiles(files);
+    event.target.value = "";
   }
 
   async function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
-    const file = Array.from(event.clipboardData.items)
-      .find((item) => item.type.startsWith("image/"))
-      ?.getAsFile();
-    if (file) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (files.length) {
       event.preventDefault();
-      await readImageFile(file);
+      await readImageFiles(files);
     }
+  }
+
+  function updateExternalImageUrl(value: string) {
+    const trimmed = value.trim();
+    const localImages = imageUrls.filter((url) => url.startsWith("data:"));
+    const next = trimmed ? [trimmed, ...localImages] : localImages;
+    setImageUrl(value);
+    setImageUrls(next.slice(0, MAX_PROMPT_IMAGES));
+  }
+
+  function removeImage(index: number) {
+    const removedImage = galleryImages[index];
+    const nextImages = galleryImages.filter((_, imageIndex) => imageIndex !== index);
+    setImageUrls(nextImages);
+    setImageUrl(nextImages.find((image) => !image.startsWith("data:")) || "");
+    if (!removedImage?.startsWith("data:")) return;
+    const localImageIndex = galleryImages
+      .slice(0, index + 1)
+      .filter((image) => image.startsWith("data:")).length - 1;
+    setImageNames((current) => {
+      const next = current.filter((_, imageIndex) => imageIndex !== localImageIndex);
+      setImageName(next[0] || "");
+      return next;
+    });
   }
 
   async function handlePublish() {
@@ -1274,10 +1405,11 @@ function PromptComposer({
                 <div className="mb-3 flex gap-2">
                   <label className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition-all hover:bg-slate-800">
                     <Plus className="h-3.5 w-3.5" />
-                    上传图片
+                    添加图片
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       className="hidden"
                       onChange={handleFileChange}
                     />
@@ -1285,16 +1417,42 @@ function PromptComposer({
                 </div>
                 <input
                   value={imageUrl.startsWith("data:") ? "" : imageUrl}
-                  onChange={(event) => {
-                    setImageUrl(event.target.value);
-                    setImageName("");
-                  }}
-                  placeholder="或粘贴图片 URL"
+                  onChange={(event) => updateExternalImageUrl(event.target.value)}
+                  placeholder="或粘贴图片 URL，默认作为第一张"
                   className="mb-3 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-primary/30 focus:ring-2 focus:ring-primary/20"
                 />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  桌面端可直接粘贴剪贴板图片；本地图片会先压缩再保存，手机端也可上传小图。
+                  默认一张图；也可以一次选择多张，最多 {MAX_PROMPT_IMAGES} 张。本地图片会先压缩再保存。
                 </p>
+                {galleryImages.length > 0 && (
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {galleryImages.map((image, index) => (
+                      <div
+                        key={`${image}-${index}`}
+                        className="group relative overflow-hidden rounded-xl border border-white bg-white shadow-sm"
+                      >
+                        {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={image}
+                          alt={`案例图 ${index + 1}`}
+                          className="aspect-square w-full object-cover"
+                        />
+                        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur">
+                          {index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/45 text-white opacity-100 backdrop-blur transition-all hover:bg-black/65 sm:opacity-0 sm:group-hover:opacity-100"
+                          aria-label={`删除第 ${index + 1} 张图片`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {isHandlingImage && (
                   <p className="mt-2 text-xs font-medium text-violet-600">
                     正在处理图片...
@@ -1304,15 +1462,20 @@ function PromptComposer({
             </Field>
 
             <div className="overflow-hidden rounded-2xl border border-gray-100 bg-slate-50">
-              {imageUrl ? (
+              {galleryImages.length ? (
                 <>
                 {/* User-saved images may be data URLs or arbitrary external URLs, so native img is intentional here. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={imageUrl}
+                  src={galleryImages[0]}
                   alt="案例预览"
                   className="max-h-[360px] w-full object-cover"
                 />
+                {galleryImages.length > 1 && (
+                  <div className="border-t border-white bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
+                    共 {galleryImages.length} 张，封面使用第 1 张
+                  </div>
+                )}
                 </>
               ) : (
                 <div className="flex aspect-square items-center justify-center p-8 text-center text-sm text-slate-400">

@@ -16,6 +16,7 @@ export type PromptCard = {
   category: string;
   tags: string[];
   imageUrl: string;
+  imageUrls?: string[];
   imagePath: string;
   size: string;
   quality: "standard" | "high";
